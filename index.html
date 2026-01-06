@@ -6,7 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Claude Code Switcher</title>
     <script>
-      tailwind = { config: { darkMode: 'class', theme: { extend: { colors: { primary: '#3b82f6' } } } } }
+      tailwind = { 
+        config: { 
+          darkMode: 'class', 
+          theme: { 
+            extend: { 
+              colors: { primary: '#3b82f6' } 
+            } 
+          } 
+        } 
+      }
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -57,8 +66,13 @@
         const [theme, setTheme] = useState(initial)
         useEffect(() => {
           const el = document.documentElement
-          if (theme === 'dark') el.classList.add('dark')
-          else el.classList.remove('dark')
+          if (theme === 'dark') {
+            el.classList.add('dark')
+            document.body.classList.add('dark')
+          } else {
+            el.classList.remove('dark')
+            document.body.classList.remove('dark')
+          }
           localStorage.setItem('ccswitch-theme', theme)
           // Forçar re-render dos ícones
           window.dispatchEvent(new Event('theme-change'));
@@ -136,14 +150,20 @@
 
         return React.createElement('div', { className: 'min-h-screen pb-12' }, [
           // Header
-          React.createElement('nav', { className: 'border-b border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md sticky top-0 z-50', style: { WebkitAppRegion: 'drag', paddingTop: '8px' } }, 
-            React.createElement('div', { className: 'max-w-5xl mx-auto px-6 h-16 flex items-center justify-between' }, [
+          React.createElement('nav', { 
+            className: 'border-b border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md sticky top-0 z-50', 
+            style: { WebkitAppRegion: 'drag', paddingTop: '32px' } 
+          }, 
+            React.createElement('div', { className: 'max-w-5xl mx-auto px-6 h-16 flex items-center justify-between', style: { WebkitAppRegion: 'no-drag' } }, [
               React.createElement('div', { className: 'flex items-center gap-2' }, [
                 React.createElement('div', { className: 'w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold' }, 'C'),
                 React.createElement('span', { className: 'font-semibold text-lg tracking-tight' }, 'Claude Code Switcher')
               ]),
               React.createElement('button', { 
-                onClick: () => setTheme(theme === 'dark' ? 'light' : 'dark'),
+                onClick: () => {
+                  const newTheme = theme === 'dark' ? 'light' : 'dark';
+                  setTheme(newTheme);
+                },
                 className: 'p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all text-zinc-500 dark:text-zinc-400',
                 style: { WebkitAppRegion: 'no-drag' }
               }, React.createElement(Icon, { name: theme === 'dark' ? 'sun' : 'moon', theme }))
