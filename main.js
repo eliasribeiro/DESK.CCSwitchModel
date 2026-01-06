@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import fsp from 'fs/promises'
@@ -141,5 +141,79 @@ ipcMain.handle('save-settings', async (_evt, payload) => {
 ipcMain.handle('open-path', async (_evt, p) => {
   if (p && typeof p === 'string') {
     shell.openPath(p)
+  }
+})
+
+function getCredentialsPath() {
+  return path.join(app.getPath('userData'), 'credentials.json')
+}
+
+async function readCredentials() {
+  const p = getCredentialsPath()
+  try {
+    const data = await fsp.readFile(p, 'utf-8')
+    const obj = JSON.parse(data)
+    if (!obj || typeof obj !== 'object') return { version: 1, providers: {} }
+    if (!obj.providers || typeof obj.providers !== 'object') obj.providers = {}
+    return obj
+  } catch {
+    return { version: 1, providers: {} }
+  }
+}
+
+async function writeCredentials(obj) {
+  const p = getCredentialsPath()
+  const dir = path.dirname(p)
+  await fsp.mkdir(dir, { recursive: true })
+  await fsp.writeFile(p, JSON.stringify(obj, null, 2), 'utf-8')
+}
+
+ipcMain.handle('credential-set', async (_evt, payload) => {
+  try {
+    const { provider, apiKey } = payload || {}
+    if (!['minimax', 'zai'].includes(provider)) return { ok: false, error: 'provedor_invalido' }
+    if (typeof apiKey !== 'string' || apiKey.trim().length === 0) return { ok: false, error: 'api_key_vazia' }
+    const trimmed = apiKey.trim()
+    const store = await readCredentials()
+    const entry = { updatedAt: Date.now() }
+    if (safeStorage.isEncryptionAvailable()) {
+      const enc = safeStorage.encryptString(trimmed)
+      entry.enc = enc.toString('base64')
+      delete entry.plain
+    } else {
+      entry.plain = trimmed
+      delete entry.enc
+    }
+    store.providers[provider] = entry
+    await writeCredentials(store)
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e?.message || 'erro_desconhecido' }
+  }
+})
+
+ipcMain.handle('credential-get', async (_evt, provider) => {
+  try {
+    if (!['minimax', 'zai'].includes(provider)) return { ok: false, error: 'provedor_invalido' }
+    const store = await readCredentials()
+    const entry = store.providers?.[provider]
+    if (!entry || (typeof entry !== 'object')) return { ok: true, apiKey: '' }
+    if (entry.enc && typeof entry.enc === 'string') {
+      try {
+        const buf = Buffer.from(entry.enc, 'base64')
+        const plain = safeStorage.decryptString(buf)
+        return { ok: true, apiKey: plain }
+      } catch {
+        delete store.providers[provider]
+        await writeCredentials(store)
+        return { ok: true, apiKey: '' }
+      }
+    }
+    if (entry.plain && typeof entry.plain === 'string') {
+      return { ok: true, apiKey: entry.plain }
+    }
+    return { ok: true, apiKey: '' }
+  } catch (e) {
+    return { ok: false, apiKey: '', error: e?.message || 'erro_desconhecido' }
   }
 })

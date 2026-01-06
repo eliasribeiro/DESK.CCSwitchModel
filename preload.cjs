@@ -9,5 +9,13 @@ contextBridge.exposeInMainWorld('ccswitch', {
     const res = await ipcRenderer.invoke('save-settings', data)
     return res
   },
-  openPath: (path) => ipcRenderer.invoke('open-path', path)
+  openPath: (path) => ipcRenderer.invoke('open-path', path),
+  setCredential: async ({ provider, apiKey }) => {
+    const res = await ipcRenderer.invoke('credential-set', { provider, apiKey })
+    return res
+  },
+  getCredential: async (provider) => {
+    const res = await ipcRenderer.invoke('credential-get', provider)
+    return res
+  }
 })

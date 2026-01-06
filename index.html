@@ -5,19 +5,20 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Claude Code Switcher</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      tailwind = { 
-        config: { 
-          darkMode: 'class', 
-          theme: { 
-            extend: { 
-              colors: { primary: '#3b82f6' } 
-            } 
-          } 
-        } 
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: { primary: '#3b82f6' }
+          }
+        }
       }
     </script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <style type="text/tailwindcss">
+      @variant dark (&:where(.dark, .dark *));
+    </style>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
@@ -102,6 +103,28 @@
         const [additionalConfig, setAdditionalConfig] = useState('')
         const [status, setStatus] = useState(null)
         const [saving, setSaving] = useState(false)
+        const isMac = /Mac|Macintosh/.test(navigator.userAgent)
+        
+        useEffect(() => {
+          let cancelled = false
+          ;(async () => {
+            const res = await window.ccswitch.getCredential(provider)
+            if (!cancelled) {
+              if (res && res.ok && typeof res.apiKey === 'string') {
+                setApiKey(res.apiKey)
+              } else {
+                setApiKey('')
+              }
+            }
+          })()
+          return () => { cancelled = true }
+        }, [provider])
+        
+        const persistApiKey = async () => {
+          if (apiKey && apiKey.trim().length > 0) {
+            await window.ccswitch.setCredential({ provider, apiKey })
+          }
+        }
 
         const jsonPreview = useMemo(() => {
           const base = {
@@ -136,6 +159,7 @@
 
         const onSave = async () => {
           setSaving(true); setStatus(null)
+          await persistApiKey()
           const res = await window.ccswitch.saveSettings({ rootPath, provider, modelName, apiKey, additionalConfig })
           setSaving(false); setStatus(res)
           // Se quiser que a mensagem dure mais ou menos, ajuste aqui
@@ -152,7 +176,7 @@
           // Header
           React.createElement('nav', { 
             className: 'border-b border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md sticky top-0 z-50', 
-            style: { WebkitAppRegion: 'drag', paddingTop: '32px' } 
+            style: { WebkitAppRegion: 'drag', paddingTop: isMac ? '32px' : '0px' } 
           }, 
             React.createElement('div', { className: 'max-w-5xl mx-auto px-6 h-16 flex items-center justify-between', style: { WebkitAppRegion: 'no-drag' } }, [
               React.createElement('div', { className: 'flex items-center gap-2' }, [
@@ -239,16 +263,17 @@
                 // API Key
                 React.createElement('div', null, [
                   React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, 'API KEY'),
-                  React.createElement('div', { className: 'relative' }, [
-                    React.createElement('input', {
-                      type: showKey ? 'text' : 'password',
-                      value: apiKey,
-                      onChange: e => setApiKey(e.target.value),
-                      className: 'w-full pl-4 pr-12 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-mono text-sm',
-                      placeholder: 'sk-...'
-                    }),
-                    React.createElement('button', {
-                      onClick: () => setShowKey(!showKey),
+                React.createElement('div', { className: 'relative' }, [
+                  React.createElement('input', {
+                    type: showKey ? 'text' : 'password',
+                    value: apiKey,
+                    onChange: e => setApiKey(e.target.value),
+                    onBlur: persistApiKey,
+                    className: 'w-full pl-4 pr-12 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-mono text-sm',
+                    placeholder: 'sk-...'
+                  }),
+                  React.createElement('button', {
+                    onClick: () => setShowKey(!showKey),
                       className: 'absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-all'
                     }, React.createElement(Icon, { name: showKey ? 'eye-off' : 'eye', size: 18, theme }))
                   ])
