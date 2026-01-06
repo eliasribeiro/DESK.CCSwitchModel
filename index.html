@@ -103,6 +103,9 @@
         const [status, setStatus] = useState(null)
         const [saving, setSaving] = useState(false)
         const isMac = /Mac|Macintosh/.test(navigator.userAgent)
+        const [openRouterModels, setOpenRouterModels] = useState([])
+        const [openRouterLoading, setOpenRouterLoading] = useState(false)
+        const [openRouterError, setOpenRouterError] = useState(null)
         
         useEffect(() => {
           let cancelled = false
@@ -119,6 +122,36 @@
           return () => { cancelled = true }
         }, [provider])
         
+        useEffect(() => {
+          let cancelled = false
+          async function loadOpenRouterModels() {
+            setOpenRouterError(null)
+            setOpenRouterModels([])
+            if (provider !== 'openrouter') return
+            if (!apiKey || apiKey.trim().length === 0) return
+            setOpenRouterLoading(true)
+            try {
+              const resp = await fetch('https://openrouter.ai/api/v1/models', {
+                headers: { Authorization: `Bearer ${apiKey.trim()}` }
+              })
+              if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+              const json = await resp.json()
+              const list = Array.isArray(json?.data) ? json.data : []
+              const ids = list.map(m => m?.canonical_slug || m?.id).filter(Boolean)
+              if (!cancelled) {
+                setOpenRouterModels(ids)
+                if (!modelName && ids.length > 0) setModelName(ids[0])
+              }
+            } catch (e) {
+              if (!cancelled) setOpenRouterError('Falha ao listar modelos do OpenRouter')
+            } finally {
+              if (!cancelled) setOpenRouterLoading(false)
+            }
+          }
+          loadOpenRouterModels()
+          return () => { cancelled = true }
+        }, [provider, apiKey])
+        
         const persistApiKey = async () => {
           if (apiKey && apiKey.trim().length > 0) {
             await window.ccswitch.setCredential({ provider, apiKey })
@@ -130,13 +163,18 @@
             env: {
               ANTHROPIC_BASE_URL: provider === 'minimax' 
                 ? "https://api.minimax.io/anthropic" 
-                : "https://api.z.ai/api/anthropic",
+                : provider === 'openrouter'
+                  ? "https://openrouter.ai/api"
+                  : "https://api.z.ai/api/anthropic",
               ANTHROPIC_AUTH_TOKEN: apiKey ? "••••••••••••••••" : "",
               API_TIMEOUT_MS: "3000000"
             }
           }
           if (provider === 'minimax') {
             base.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = 1
+          }
+          if (provider === 'openrouter') {
+            base.env.ANTHROPIC_API_KEY = ""
           }
           const models = ["ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"]
           models.forEach(m => base.env[m] = modelName || (provider === 'minimax' ? 'MiniMax-M2.1' : 'glm-4.7'))
@@ -227,12 +265,17 @@
                 // Provider
                 React.createElement('div', null, [
                   React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, 'PROVEDOR'),
-                  React.createElement('div', { className: 'grid grid-cols-2 gap-3' }, [
+                  React.createElement('div', { className: 'grid grid-cols-3 gap-3' }, [
                     { id: 'zai', label: 'Z.AI (GLM)', icon: 'Zap' },
-                    { id: 'minimax', label: 'MiniMax', icon: 'Cpu' }
+                    { id: 'minimax', label: 'MiniMax', icon: 'Cpu' },
+                    { id: 'openrouter', label: 'OpenRouter', icon: 'Globe' }
                   ].map(p => React.createElement('button', {
                     key: p.id,
-                    onClick: () => { setProvider(p.id); setModelName(PRESETS[p.id][0].value); },
+                    onClick: () => { 
+                      setProvider(p.id); 
+                      if (PRESETS[p.id]?.[0]?.value) setModelName(PRESETS[p.id][0].value); 
+                      else setModelName('');
+                    },
                     className: `flex items-center gap-2 px-4 py-3 rounded-xl border-2 transition-all ${provider === p.id 
                       ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400' 
                       : 'border-zinc-100 dark:border-zinc-800 hover:border-zinc-200 dark:hover:border-zinc-700'}`
@@ -242,21 +285,42 @@
                 // Model Name with Presets
                 React.createElement('div', null, [
                   React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, 'MODELO'),
-                  React.createElement('div', { className: 'space-y-3' }, [
-                    React.createElement('input', {
-                      value: modelName,
-                      onChange: e => setModelName(e.target.value),
-                      className: 'w-full px-4 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium',
-                      placeholder: 'Nome do modelo...'
-                    }),
-                    React.createElement('div', { className: 'flex flex-wrap gap-2' }, PRESETS[provider].map(preset => React.createElement('button', {
-                      key: preset.value,
-                      onClick: () => setModelName(preset.value),
-                      className: `text-[10px] px-2 py-1 rounded-md border ${modelName === preset.value 
-                        ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 border-transparent' 
-                        : 'border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all'}`
-                    }, preset.name)))
-                  ])
+                  provider === 'openrouter' 
+                    ? React.createElement('div', { className: 'space-y-3' }, [
+                        React.createElement('input', {
+                          value: modelName,
+                          onChange: e => setModelName(e.target.value),
+                          className: 'w-full px-4 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium',
+                          placeholder: 'Ex.: anthropic/claude-3.5-sonnet'
+                        }),
+                        !apiKey ? React.createElement('div', { className: 'text-xs text-zinc-500' }, 'Informe a API Key para listar modelos.')
+                        : openRouterLoading ? React.createElement('div', { className: 'text-xs text-zinc-500' }, 'Carregando modelos...')
+                        : openRouterError ? React.createElement('div', { className: 'text-xs text-red-500' }, openRouterError)
+                        : React.createElement('div', { className: 'flex flex-wrap gap-2 max-h-40 overflow-auto' }, 
+                            openRouterModels.slice(0, 60).map(id => React.createElement('button', {
+                              key: id,
+                              onClick: () => setModelName(id),
+                              className: `text-[10px] px-2 py-1 rounded-md border ${modelName === id 
+                                ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 border-transparent' 
+                                : 'border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all'}`
+                            }, id))
+                          )
+                      ])
+                    : React.createElement('div', { className: 'space-y-3' }, [
+                        React.createElement('input', {
+                          value: modelName,
+                          onChange: e => setModelName(e.target.value),
+                          className: 'w-full px-4 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium',
+                          placeholder: 'Nome do modelo...'
+                        }),
+                        React.createElement('div', { className: 'flex flex-wrap gap-2' }, PRESETS[provider].map(preset => React.createElement('button', {
+                          key: preset.value,
+                          onClick: () => setModelName(preset.value),
+                          className: `text-[10px] px-2 py-1 rounded-md border ${modelName === preset.value 
+                            ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 border-transparent' 
+                            : 'border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all'}`
+                        }, preset.name)))
+                      ])
                 ]),
 
                 // API Key

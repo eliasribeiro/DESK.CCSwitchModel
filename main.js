@@ -71,6 +71,11 @@ function providerEnv(provider, modelName, apiKey, additionalConfigObj) {
     env.ANTHROPIC_AUTH_TOKEN = apiKey
     env.API_TIMEOUT_MS = '3000000'
     env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = 1
+  } else if (provider === 'openrouter') {
+    env.ANTHROPIC_BASE_URL = 'https://openrouter.ai/api'
+    env.ANTHROPIC_AUTH_TOKEN = apiKey
+    env.ANTHROPIC_API_KEY = '' // recomendado para evitar conflitos
+    env.API_TIMEOUT_MS = '3000000'
   }
 
   // Mapeamento de modelos para garantir compatibilidade total com Claude Code
@@ -171,7 +176,7 @@ async function writeCredentials(obj) {
 ipcMain.handle('credential-set', async (_evt, payload) => {
   try {
     const { provider, apiKey } = payload || {}
-    if (!['minimax', 'zai'].includes(provider)) return { ok: false, error: 'provedor_invalido' }
+    if (!['minimax', 'zai', 'openrouter'].includes(provider)) return { ok: false, error: 'provedor_invalido' }
     if (typeof apiKey !== 'string' || apiKey.trim().length === 0) return { ok: false, error: 'api_key_vazia' }
     const trimmed = apiKey.trim()
     const store = await readCredentials()
@@ -194,7 +199,7 @@ ipcMain.handle('credential-set', async (_evt, payload) => {
 
 ipcMain.handle('credential-get', async (_evt, provider) => {
   try {
-    if (!['minimax', 'zai'].includes(provider)) return { ok: false, error: 'provedor_invalido' }
+    if (!['minimax', 'zai', 'openrouter'].includes(provider)) return { ok: false, error: 'provedor_invalido' }
     const store = await readCredentials()
     const entry = store.providers?.[provider]
     if (!entry || (typeof entry !== 'object')) return { ok: true, apiKey: '' }
