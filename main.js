@@ -101,7 +101,7 @@ ipcMain.handle('save-settings', async (_evt, payload) => {
     
     // Validações
     if (!isNonEmptyString(rootPath)) return { ok: false, error: 'Selecione uma pasta válida' }
-    if (!['minimax', 'zai'].includes(provider)) return { ok: false, error: 'Selecione um provedor válido' }
+    if (!['minimax', 'zai', 'openrouter'].includes(provider)) return { ok: false, error: 'Selecione um provedor válido' }
     if (!isNonEmptyString(modelName)) return { ok: false, error: 'Informe o nome do modelo' }
     if (!isNonEmptyString(apiKey)) return { ok: false, error: 'Informe a API Key' }
 
