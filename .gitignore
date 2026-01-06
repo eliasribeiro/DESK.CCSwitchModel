@@ -1,0 +1,19 @@
+# Node/Electron
+node_modules/
+dist/
+out/
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# OS/IDE
+.DS_Store
+.idea/
+.vscode/
+
+# App artifacts
+.claude/
+coverage/
+
+# Env/Secrets
+.env

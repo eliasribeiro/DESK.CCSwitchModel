@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="pt-BR" class="">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Code Switcher</title>
+    <script>
+      tailwind = { config: { darkMode: 'class', theme: { extend: { colors: { primary: '#3b82f6' } } } } }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+      body { font-family: 'Inter', sans-serif; }
+      .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); }
+      .transition-all { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #374151; border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+    </style>
+  </head>
+  <body class="bg-[#fafafa] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 transition-colors duration-300">
+    <div id="root"></div>
+
+    <script>
+      const { useEffect, useMemo, useState, useRef } = React
+
+      // Lucide Icon via CDN (sem toSvg)
+      const Icon = ({ name, size = 18, className = "", theme }) => {
+        const iconRef = useRef(null)
+        useEffect(() => {
+          if (window.lucide) {
+            lucide.createIcons()
+          }
+        }, [name, size, className, theme])
+        return React.createElement('i', { 
+          ref: iconRef, 
+          'data-lucide': name, 
+          className: `inline-flex shrink-0 ${className}`, 
+          style: { width: size, height: size }
+        })
+      }
+
+      function useTheme() {
+        const initial = (() => {
+          const saved = localStorage.getItem('ccswitch-theme')
+          if (saved === 'dark' || saved === 'light') return saved
+          return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        })()
+        const [theme, setTheme] = useState(initial)
+        useEffect(() => {
+          const el = document.documentElement
+          if (theme === 'dark') el.classList.add('dark')
+          else el.classList.remove('dark')
+          localStorage.setItem('ccswitch-theme', theme)
+          // Forçar re-render dos ícones
+          window.dispatchEvent(new Event('theme-change'));
+        }, [theme])
+        return { theme, setTheme }
+      }
+
+      const PRESETS = {
+        zai: [
+          { name: 'GLM-4.7 (Recomendado)', value: 'glm-4.7' },
+          { name: 'GLM-4.6', value: 'glm-4.6' },
+          { name: 'GLM-4.5-Air', value: 'glm-4.5-air' }
+        ],
+        minimax: [
+          { name: 'MiniMax-M2.1 (Recomendado)', value: 'MiniMax-M2.1' },
+          { name: 'MiniMax-M2', value: 'MiniMax-M2' }
+        ]
+      }
+
+      function App() {
+        const { theme, setTheme } = useTheme()
+        const [rootPath, setRootPath] = useState('')
+        const [provider, setProvider] = useState('zai')
+        const [modelName, setModelName] = useState('glm-4.7')
+        const [apiKey, setApiKey] = useState('')
+        const [showKey, setShowKey] = useState(false)
+        const [additionalConfig, setAdditionalConfig] = useState('')
+        const [status, setStatus] = useState(null)
+        const [saving, setSaving] = useState(false)
+
+        const jsonPreview = useMemo(() => {
+          const base = {
+            env: {
+              ANTHROPIC_BASE_URL: provider === 'minimax' 
+                ? "https://api.minimax.io/anthropic" 
+                : "https://api.z.ai/api/anthropic",
+              ANTHROPIC_AUTH_TOKEN: apiKey ? "••••••••••••••••" : "",
+              API_TIMEOUT_MS: "3000000"
+            }
+          }
+          if (provider === 'minimax') {
+            base.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = 1
+          }
+          const models = ["ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"]
+          models.forEach(m => base.env[m] = modelName || (provider === 'minimax' ? 'MiniMax-M2.1' : 'glm-4.7'))
+          
+          try {
+            if (additionalConfig) {
+              const extra = JSON.parse(additionalConfig)
+              Object.assign(base.env, extra)
+            }
+          } catch(e) {}
+          
+          return JSON.stringify(base, null, 2)
+        }, [provider, modelName, apiKey, additionalConfig])
+
+        const onPickRoot = async () => {
+          const p = await window.ccswitch.selectRoot()
+          if (p) setRootPath(p)
+        }
+
+        const onSave = async () => {
+          setSaving(true); setStatus(null)
+          const res = await window.ccswitch.saveSettings({ rootPath, provider, modelName, apiKey, additionalConfig })
+          setSaving(false); setStatus(res)
+          // Se quiser que a mensagem dure mais ou menos, ajuste aqui
+        }
+
+        const openProjectFolder = () => {
+          if (rootPath) {
+            // Usaremos uma função exposa no preload para abrir a pasta
+            window.ccswitch.openPath(rootPath)
+          }
+        }
+
+        return React.createElement('div', { className: 'min-h-screen pb-12' }, [
+          // Header
+          React.createElement('nav', { className: 'border-b border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md sticky top-0 z-50', style: { WebkitAppRegion: 'drag', paddingTop: '8px' } }, 
+            React.createElement('div', { className: 'max-w-5xl mx-auto px-6 h-16 flex items-center justify-between' }, [
+              React.createElement('div', { className: 'flex items-center gap-2' }, [
+                React.createElement('div', { className: 'w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold' }, 'C'),
+                React.createElement('span', { className: 'font-semibold text-lg tracking-tight' }, 'Claude Code Switcher')
+              ]),
+              React.createElement('button', { 
+                onClick: () => setTheme(theme === 'dark' ? 'light' : 'dark'),
+                className: 'p-2 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all text-zinc-500 dark:text-zinc-400',
+                style: { WebkitAppRegion: 'no-drag' }
+              }, React.createElement(Icon, { name: theme === 'dark' ? 'sun' : 'moon', theme }))
+            ])
+          ),
+
+          React.createElement('main', { className: 'max-w-5xl mx-auto px-6 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8' }, [
+            // Left Column: Form
+            React.createElement('div', { className: 'lg:col-span-7 space-y-6' }, [
+              // Project Selection
+              React.createElement('div', { className: 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm' }, [
+                React.createElement('h2', { className: 'text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-4 flex items-center gap-2' }, [
+                  React.createElement(Icon, { name: 'folder-open', size: 14, theme }), 'Projeto'
+                ]),
+                React.createElement('div', { className: 'flex flex-col gap-3' }, [
+                  React.createElement('button', {
+                    onClick: onPickRoot,
+                    className: 'flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl border-2 border-dashed border-zinc-200 dark:border-zinc-800 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-500/5 transition-all group'
+                  }, [
+                    React.createElement(Icon, { name: 'plus', className: 'text-zinc-400 group-hover:text-blue-500', theme }),
+                    React.createElement('span', { className: 'text-zinc-600 dark:text-zinc-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 font-medium' }, 
+                      rootPath ? 'Alterar pasta do projeto' : 'Selecionar pasta raiz do projeto'
+                    )
+                  ]),
+                  rootPath && React.createElement('div', { className: 'flex items-center gap-2 px-3 py-2 bg-zinc-50 dark:bg-zinc-950 rounded-lg border border-zinc-200 dark:border-zinc-800' }, [
+                    React.createElement(Icon, { name: 'check-circle-2', size: 16, className: 'text-green-500', theme }),
+                    React.createElement('span', { className: 'text-xs font-mono text-zinc-500 truncate' }, rootPath)
+                  ])
+                ])
+              ]),
+
+              // Configuration
+              React.createElement('div', { className: 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm space-y-6' }, [
+                React.createElement('h2', { className: 'text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-2 flex items-center gap-2' }, [
+                  React.createElement(Icon, { name: 'settings-2', size: 14, theme }), 'Configurações do Modelo'
+                ]),
+                
+                // Provider
+                React.createElement('div', null, [
+                  React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, 'PROVEDOR'),
+                  React.createElement('div', { className: 'grid grid-cols-2 gap-3' }, [
+                    { id: 'zai', label: 'Z.AI (GLM)', icon: 'Zap' },
+                    { id: 'minimax', label: 'MiniMax', icon: 'Cpu' }
+                  ].map(p => React.createElement('button', {
+                    key: p.id,
+                    onClick: () => { setProvider(p.id); setModelName(PRESETS[p.id][0].value); },
+                    className: `flex items-center gap-2 px-4 py-3 rounded-xl border-2 transition-all ${provider === p.id 
+                      ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400' 
+                      : 'border-zinc-100 dark:border-zinc-800 hover:border-zinc-200 dark:hover:border-zinc-700'}`
+                  }, [React.createElement(Icon, { name: p.icon.toLowerCase(), size: 18, theme }), React.createElement('span', { className: 'font-medium' }, p.label)])))
+                ]),
+
+                // Model Name with Presets
+                React.createElement('div', null, [
+                  React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, 'MODELO'),
+                  React.createElement('div', { className: 'space-y-3' }, [
+                    React.createElement('input', {
+                      value: modelName,
+                      onChange: e => setModelName(e.target.value),
+                      className: 'w-full px-4 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium',
+                      placeholder: 'Nome do modelo...'
+                    }),
+                    React.createElement('div', { className: 'flex flex-wrap gap-2' }, PRESETS[provider].map(preset => React.createElement('button', {
+                      key: preset.value,
+                      onClick: () => setModelName(preset.value),
+                      className: `text-[10px] px-2 py-1 rounded-md border ${modelName === preset.value 
+                        ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 border-transparent' 
+                        : 'border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all'}`
+                    }, preset.name)))
+                  ])
+                ]),
+
+                // API Key
+                React.createElement('div', null, [
+                  React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, 'API KEY'),
+                  React.createElement('div', { className: 'relative' }, [
+                    React.createElement('input', {
+                      type: showKey ? 'text' : 'password',
+                      value: apiKey,
+                      onChange: e => setApiKey(e.target.value),
+                      className: 'w-full pl-4 pr-12 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-mono text-sm',
+                      placeholder: 'sk-...'
+                    }),
+                    React.createElement('button', {
+                      onClick: () => setShowKey(!showKey),
+                      className: 'absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-all'
+                    }, React.createElement(Icon, { name: showKey ? 'eye-off' : 'eye', size: 18, theme }))
+                  ])
+                ]),
+
+                // Additional Config
+                React.createElement('div', null, [
+                  React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, 'JSON ADICIONAL (OPCIONAL)'),
+                  React.createElement('textarea', {
+                    value: additionalConfig,
+                    onChange: e => setAdditionalConfig(e.target.value),
+                    rows: 3,
+                    className: 'w-full px-4 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-mono text-xs',
+                    placeholder: '{"API_TIMEOUT_MS": "3000000"}'
+                  })
+                ])
+              ]),
+
+              // Save Button
+              React.createElement('button', {
+                disabled: !rootPath || !apiKey || saving,
+                onClick: onSave,
+                className: `w-full py-4 rounded-2xl font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${!rootPath || !apiKey || saving 
+                  ? 'bg-zinc-300 dark:bg-zinc-800 cursor-not-allowed opacity-50' 
+                  : 'bg-blue-600 hover:bg-blue-700 hover:-translate-y-0.5 active:translate-y-0 shadow-blue-500/20'}`
+              }, [
+                saving ? React.createElement(Icon, { name: 'loader-2', className: 'animate-spin', theme }) : React.createElement(Icon, { name: 'save', theme }),
+                saving ? 'Salvando Configurações...' : 'Gerar .claude/settings.json'
+              ]),
+
+              // Status Feedback
+              status && React.createElement('div', {
+                className: `p-4 rounded-xl border flex items-start justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300 ${status.ok 
+                  ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/20 text-green-700 dark:text-green-400' 
+                  : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400'}`
+              }, [
+                React.createElement('div', { className: 'flex gap-3' }, [
+                  React.createElement(Icon, { name: status.ok ? 'check-circle' : 'alert-circle', className: 'mt-0.5 shrink-0', theme }),
+                  React.createElement('div', null, [
+                    React.createElement('p', { className: 'font-semibold text-sm' }, status.ok ? 'Sucesso!' : 'Erro ao salvar'),
+                    React.createElement('p', { className: 'text-xs opacity-90' }, status.ok ? status.message : status.error)
+                  ])
+                ]),
+                status.ok && React.createElement('button', {
+                  onClick: openProjectFolder,
+                  className: 'shrink-0 p-2 hover:bg-green-100 dark:hover:bg-green-500/20 rounded-lg transition-all text-green-700 dark:text-green-400 flex items-center gap-1.5 text-xs font-bold'
+                }, [React.createElement(Icon, { name: 'external-link', size: 14, theme }), 'Abrir Pasta'])
+              ])
+            ]),
+
+            // Right Column: Preview
+            React.createElement('div', { className: 'lg:col-span-5' }, [
+              React.createElement('div', { className: 'sticky top-24' }, [
+                React.createElement('div', { className: 'bg-zinc-900 dark:bg-black rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl' }, [
+                  // Preview Header
+                  React.createElement('div', { className: 'bg-zinc-800/50 px-4 py-3 border-b border-zinc-800 flex items-center justify-between' }, [
+                    React.createElement('div', { className: 'flex items-center gap-2' }, [
+                      React.createElement('div', { className: 'flex gap-1.5' }, [
+                        React.createElement('div', { className: 'w-2.5 h-2.5 rounded-full bg-red-500' }),
+                        React.createElement('div', { className: 'w-2.5 h-2.5 rounded-full bg-yellow-500' }),
+                        React.createElement('div', { className: 'w-2.5 h-2.5 rounded-full bg-green-500' })
+                      ]),
+                      React.createElement('span', { className: 'text-[11px] font-mono text-zinc-400 ml-2 uppercase tracking-widest' }, 'Preview: settings.json')
+                    ]),
+                    React.createElement(Icon, { name: 'code', size: 14, className: 'text-zinc-500', theme })
+                  ]),
+                  // Preview Body
+                  React.createElement('div', { className: 'p-6' }, [
+                    React.createElement('pre', { className: 'text-[12px] font-mono text-blue-400 leading-relaxed overflow-x-auto' }, 
+                      jsonPreview.split('\n').map((line, i) => React.createElement('div', { key: i, className: 'flex gap-4' }, [
+                        React.createElement('span', { className: 'text-zinc-700 text-right w-4 shrink-0' }, i + 1),
+                        React.createElement('span', { className: line.includes('ANTHROPIC_') ? 'text-blue-300' : line.includes('••••') ? 'text-zinc-600' : 'text-zinc-300' }, line)
+                      ]))
+                    )
+                  ])
+                ]),
+                // Tips
+                React.createElement('div', { className: 'mt-6 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 space-y-3' }, [
+                  React.createElement('h3', { className: 'text-xs font-bold uppercase tracking-widest flex items-center gap-2' }, [
+                    React.createElement(Icon, { name: 'lightbulb', size: 14, className: 'text-yellow-500', theme }), 'Dicas'
+                  ]),
+                  React.createElement('ul', { className: 'text-[11px] space-y-2 leading-relaxed' }, [
+                    '• A pasta .claude será criada automaticamente se não existir.',
+                    '• O Claude Code lê as variáveis do campo "env" no arquivo settings.json.',
+                    '• Variáveis de ambiente reais (export ...) têm prioridade sobre este arquivo.'
+                  ])
+                ])
+              ])
+            ])
+          ])
+        ])
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'))
+      root.render(React.createElement(App))
+      
+      // Inicializar Lucide após render
+      window.addEventListener('load', () => {
+        if (window.lucide) lucide.createIcons()
+      })
+    </script>
+  </body>
+</html>
