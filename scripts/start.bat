@@ -4,6 +4,8 @@ echo ========================================
 echo   Iniciando Claude Code Switcher...
 echo ========================================
 
+cd /d "%~dp0.."
+
 IF NOT EXIST node_modules (
     echo [!] Dependencias nao encontradas. Instalando...
     npm install
