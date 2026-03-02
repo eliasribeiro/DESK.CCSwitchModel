@@ -90,6 +90,12 @@
         minimax: [
           { name: 'MiniMax-M2.1 (Recomendado)', value: 'MiniMax-M2.1' },
           { name: 'MiniMax-M2', value: 'MiniMax-M2' }
+        ],
+        kimi: [
+          { name: 'Kimi K2.5 (Thinking Turbo)', value: 'kimi-k2.5' },
+          { name: 'Moonshot v1-128k', value: 'moonshot-v1-128k' },
+          { name: 'Moonshot v1-32k', value: 'moonshot-v1-32k' },
+          { name: 'Moonshot v1-8k', value: 'moonshot-v1-8k' }
         ]
       }
 
@@ -202,25 +208,39 @@
         }
 
         const jsonPreview = useMemo(() => {
-          const base = {
-            env: {
-              ANTHROPIC_BASE_URL: provider === 'minimax' 
-                ? "https://api.minimax.io/anthropic" 
-                : provider === 'openrouter'
-                  ? "https://openrouter.ai/api"
-                  : "https://api.z.ai/api/anthropic",
-              ANTHROPIC_AUTH_TOKEN: apiKey ? "••••••••••••••••" : "",
-              API_TIMEOUT_MS: "3000000"
+          const getBaseUrl = () => {
+            switch (provider) {
+              case 'minimax': return "https://api.minimax.io/anthropic"
+              case 'openrouter': return "https://openrouter.ai/api"
+              case 'kimi': return "https://api.moonshot.ai/anthropic"
+              default: return "https://api.z.ai/api/anthropic"
             }
           }
-          if (provider === 'minimax') {
-            base.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = 1
+          const getDefaultModel = () => {
+            switch (provider) {
+              case 'minimax': return 'MiniMax-M2.1'
+              case 'kimi': return 'kimi-k2.5'
+              default: return 'glm-4.7'
+            }
+          }
+          const getTimeoutMs = () => {
+            return provider === 'kimi' ? "600000" : "3000000"
+          }
+          const base = {
+            env: {
+              ANTHROPIC_BASE_URL: getBaseUrl(),
+              ANTHROPIC_AUTH_TOKEN: apiKey ? "••••••••••••••••" : "",
+              API_TIMEOUT_MS: getTimeoutMs()
+            }
+          }
+          if (provider === 'minimax' || provider === 'kimi') {
+            base.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = "1"
           }
           if (provider === 'openrouter') {
             base.env.ANTHROPIC_API_KEY = ""
           }
           const models = ["ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"]
-          models.forEach(m => base.env[m] = modelName || (provider === 'minimax' ? 'MiniMax-M2.1' : 'glm-4.7'))
+          models.forEach(m => base.env[m] = modelName || getDefaultModel())
           
           try {
             if (additionalConfig) {
@@ -322,6 +342,7 @@
                   React.createElement('div', { className: 'grid grid-cols-3 gap-3' }, [
                     { id: 'zai', label: 'Z.AI (GLM)', icon: 'Zap' },
                     { id: 'minimax', label: 'MiniMax', icon: 'Cpu' },
+                    { id: 'kimi', label: 'Kimi', icon: 'Moon' },
                     { id: 'openrouter', label: 'OpenRouter', icon: 'Globe' }
                   ].map(p => React.createElement('button', {
                     key: p.id,
