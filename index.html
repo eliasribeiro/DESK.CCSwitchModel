@@ -96,6 +96,16 @@
           { name: 'Moonshot v1-128k', value: 'moonshot-v1-128k' },
           { name: 'Moonshot v1-32k', value: 'moonshot-v1-32k' },
           { name: 'Moonshot v1-8k', value: 'moonshot-v1-8k' }
+        ],
+        alibaba: [
+          { name: 'Qwen3.5-Plus (Recomendado)', value: 'qwen3.5-plus' },
+          { name: 'Kimi-K2.5 (Vision)', value: 'kimi-k2.5' },
+          { name: 'GLM-5', value: 'glm-5' },
+          { name: 'MiniMax-M2.5', value: 'MiniMax-M2.5' },
+          { name: 'Qwen3-Max-2026-01-23', value: 'qwen3-max-2026-01-23' },
+          { name: 'Qwen3-Coder-Next', value: 'qwen3-coder-next' },
+          { name: 'Qwen3-Coder-Plus', value: 'qwen3-coder-plus' },
+          { name: 'GLM-4.7', value: 'glm-4.7' }
         ]
       }
 
@@ -213,6 +223,7 @@
               case 'minimax': return "https://api.minimax.io/anthropic"
               case 'openrouter': return "https://openrouter.ai/api"
               case 'kimi': return "https://api.moonshot.ai/anthropic"
+              case 'alibaba': return "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic"
               default: return "https://api.z.ai/api/anthropic"
             }
           }
@@ -220,6 +231,7 @@
             switch (provider) {
               case 'minimax': return 'MiniMax-M2.1'
               case 'kimi': return 'kimi-k2.5'
+              case 'alibaba': return 'qwen3.5-plus'
               default: return 'glm-4.7'
             }
           }
@@ -339,11 +351,12 @@
                 // Provider
                 React.createElement('div', null, [
                   React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, 'PROVEDOR'),
-                  React.createElement('div', { className: 'grid grid-cols-3 gap-3' }, [
+                  React.createElement('div', { className: 'grid grid-cols-5 gap-3' }, [
                     { id: 'zai', label: 'Z.AI (GLM)', icon: 'Zap' },
                     { id: 'minimax', label: 'MiniMax', icon: 'Cpu' },
                     { id: 'kimi', label: 'Kimi', icon: 'Moon' },
-                    { id: 'openrouter', label: 'OpenRouter', icon: 'Globe' }
+                    { id: 'openrouter', label: 'OpenRouter', icon: 'Globe' },
+                    { id: 'alibaba', label: 'Alibaba Coding Plan', icon: 'Cloud' }
                   ].map(p => React.createElement('button', {
                     key: p.id,
                     onClick: () => { 

@@ -95,6 +95,10 @@ function providerEnv(provider, modelName, apiKey, additionalConfigObj) {
     env.ANTHROPIC_AUTH_TOKEN = apiKey
     env.API_TIMEOUT_MS = '600000'
     env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
+  } else if (provider === 'alibaba') {
+    env.ANTHROPIC_BASE_URL = 'https://coding-intl.dashscope.aliyuncs.com/apps/anthropic'
+    env.ANTHROPIC_AUTH_TOKEN = apiKey
+    env.API_TIMEOUT_MS = '3000000'
   }
 
   // Mapeamento de modelos para garantir compatibilidade total com Claude Code
@@ -120,7 +124,7 @@ ipcMain.handle('save-settings', async (_evt, payload) => {
     
     // Validações
     if (!isNonEmptyString(rootPath)) return { ok: false, error: 'Selecione uma pasta válida' }
-    if (!['minimax', 'zai', 'openrouter', 'kimi'].includes(provider)) return { ok: false, error: 'Selecione um provedor válido' }
+    if (!['minimax', 'zai', 'openrouter', 'kimi', 'alibaba'].includes(provider)) return { ok: false, error: 'Selecione um provedor válido' }
     if (!isNonEmptyString(modelName)) return { ok: false, error: 'Informe o nome do modelo' }
     if (!isNonEmptyString(apiKey)) return { ok: false, error: 'Informe a API Key' }
 
@@ -195,7 +199,7 @@ async function writeCredentials(obj) {
 ipcMain.handle('credential-set', async (_evt, payload) => {
   try {
     const { provider, apiKey } = payload || {}
-    if (!['minimax', 'zai', 'openrouter', 'kimi'].includes(provider)) return { ok: false, error: 'provedor_invalido' }
+    if (!['minimax', 'zai', 'openrouter', 'kimi', 'alibaba'].includes(provider)) return { ok: false, error: 'provedor_invalido' }
     if (typeof apiKey !== 'string' || apiKey.trim().length === 0) return { ok: false, error: 'api_key_vazia' }
     const trimmed = apiKey.trim()
     const store = await readCredentials()
@@ -218,7 +222,7 @@ ipcMain.handle('credential-set', async (_evt, payload) => {
 
 ipcMain.handle('credential-get', async (_evt, provider) => {
   try {
-    if (!['minimax', 'zai', 'openrouter', 'kimi'].includes(provider)) return { ok: false, error: 'provedor_invalido' }
+    if (!['minimax', 'zai', 'openrouter', 'kimi', 'alibaba'].includes(provider)) return { ok: false, error: 'provedor_invalido' }
     const store = await readCredentials()
     const entry = store.providers?.[provider]
     if (!entry || (typeof entry !== 'object')) return { ok: true, apiKey: '' }
