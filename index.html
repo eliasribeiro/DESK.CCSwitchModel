@@ -34,6 +34,10 @@
       ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb { background: #374151; border-radius: 10px; }
       ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+      /* Layout responsivo */
+      @media (max-width: 1024px) {
+        .preview-column { order: -1; }
+      }
     </style>
   </head>
   <body class="bg-[#fafafa] dark:bg-[#09090b] text-zinc-900 dark:text-zinc-100 transition-colors duration-300">
@@ -82,6 +86,7 @@
       }
 
       const PRESETS = {
+        // Claude Code providers
         zai: [
           { name: 'GLM-4.7 (Recomendado)', value: 'glm-4.7' },
           { name: 'GLM-4.6', value: 'glm-4.6' },
@@ -106,111 +111,120 @@
           { name: 'Qwen3-Coder-Next', value: 'qwen3-coder-next' },
           { name: 'Qwen3-Coder-Plus', value: 'qwen3-coder-plus' },
           { name: 'GLM-4.7', value: 'glm-4.7' }
+        ],
+        piramyd: [
+          { name: 'GPT-5.2 Pro (Recomendado)', value: 'gpt-5.2-pro' },
+          { name: 'Claude-S4.5', value: 'claude-s4.5' },
+          { name: 'Grok-4', value: 'grok-4' },
+          { name: 'GPT-5', value: 'gpt-5' }
+        ],
+        cerebras: [
+          { name: 'GLM 4.7 (Recomendado)', value: 'glm-4.7' },
+          { name: 'Llama 4 Scout', value: 'llama-4-scout' },
+          { name: 'Llama 3.3 70B', value: 'llama-3.3-70b' },
+          { name: 'Llama 3.1 8B', value: 'llama-3.1-8b' },
+          { name: 'GPT OSS 120B', value: 'gpt-oss-120b' },
+          { name: 'Qwen 3 32B', value: 'qwen-3-32b' }
+        ],
+        // OpenCode providers
+        anthropic: [
+          { name: 'Claude Sonnet 4.5 (Recomendado)', value: 'claude-sonnet-4-5-20250929' },
+          { name: 'Claude Opus 4.5', value: 'claude-opus-4-5-20250929' },
+          { name: 'Claude 3.7 Sonnet', value: 'claude-3-7-sonnet-20250219' }
+        ],
+        openai: [
+          { name: 'GPT-5.1 Codex (Recomendado)', value: 'gpt-5.1-codex' },
+          { name: 'GPT-5', value: 'gpt-5' },
+          { name: 'GPT-4.1', value: 'gpt-4.1' }
+        ],
+        google: [
+          { name: 'Gemini 2.5 Pro (Recomendado)', value: 'gemini-2.5-pro' },
+          { name: 'Gemma 3n E4B', value: 'gemma-3n-e4b' }
+        ],
+        opencode: [
+          { name: 'GPT-5.1 Codex (Zen)', value: 'gpt-5.1-codex' },
+          { name: 'Claude Sonnet 4.5 (Zen)', value: 'claude-sonnet-4-5-20250929' }
         ]
       }
 
       function App() {
         const { theme, setTheme } = useTheme()
         const [rootPath, setRootPath] = useState('')
-        const [provider, setProvider] = useState('zai')
-        const [modelName, setModelName] = useState('glm-4.7')
+        const [cliType, setCliType] = useState('claude-code')
+        const [provider, setProvider] = useState('')
+        const [modelName, setModelName] = useState('')
         const [apiKey, setApiKey] = useState('')
-        const [additionalConfig, setAdditionalConfig] = useState('')
         const [status, setStatus] = useState(null)
         const [saving, setSaving] = useState(false)
         const isMac = /Mac|Macintosh/.test(navigator.userAgent)
-        const [openRouterModels, setOpenRouterModels] = useState([])
-        const [openRouterLoading, setOpenRouterLoading] = useState(false)
-        const [openRouterError, setOpenRouterError] = useState(null)
-        const [openRouterFreeOnly, setOpenRouterFreeOnly] = useState(false)
-        const searchTimer = useRef(null)
-        
+        const [hasApiKey, setHasApiKey] = useState(false)
+        const [availableModels, setAvailableModels] = useState([])
+        const [modelsLoading, setModelsLoading] = useState(false)
+        const [modelsError, setModelsError] = useState(null)
+        const [modelFilter, setModelFilter] = useState('')
+        const modelsSearchTimer = useRef(null)
+
+        // Efeito para carregar modelos do provedor quando API Key é fornecida
         useEffect(() => {
-          let cancelled = false
-          ;(async () => {
-            const res = await window.ccswitch.getCredential(provider)
-            if (!cancelled) {
-              if (res && res.ok && typeof res.apiKey === 'string') {
-                setApiKey(res.apiKey)
-              } else {
-                setApiKey('')
-              }
-            }
-          })()
-          return () => { cancelled = true }
-        }, [provider])
-        
-        useEffect(() => {
-          let cancelled = false
-          if (searchTimer.current) {
-            clearTimeout(searchTimer.current)
-            searchTimer.current = null
+          if (modelsSearchTimer.current) {
+            clearTimeout(modelsSearchTimer.current)
+            modelsSearchTimer.current = null
           }
-          setOpenRouterError(null)
-          if (provider !== 'openrouter') {
-            setOpenRouterModels([])
-            setOpenRouterLoading(false)
+          setModelsError(null)
+          
+          // Provedores que suportam listagem dinâmica de modelos
+          const providersWithApi = ['zai', 'openrouter', 'piramyd']
+          
+          if (!provider || !hasApiKey || !providersWithApi.includes(provider)) {
+            setAvailableModels([])
+            setModelsLoading(false)
             return () => {}
           }
-          if (!apiKey || apiKey.trim().length === 0) {
-            setOpenRouterModels([])
-            setOpenRouterLoading(false)
-            return () => {}
-          }
-          if (!modelName || modelName.trim().length < 3) {
-            setOpenRouterModels([])
-            setOpenRouterLoading(false)
-            return () => {}
-          }
-          searchTimer.current = setTimeout(async () => {
-            setOpenRouterLoading(true)
+
+          modelsSearchTimer.current = setTimeout(async () => {
+            setModelsLoading(true)
             try {
-              const resp = await fetch('https://openrouter.ai/api/v1/models', {
-                headers: { Authorization: `Bearer ${apiKey.trim()}` }
-              })
+              let url, headers
+              
+              if (provider === 'zai') {
+                url = 'https://api.z.ai/api/paas/v4/models'
+                headers = { Authorization: `Bearer ${apiKey.trim()}` }
+              } else if (provider === 'piramyd') {
+                url = 'https://api.piramyd.cloud/v1/models'
+                headers = { Authorization: `Bearer ${apiKey.trim()}` }
+              } else if (provider === 'openrouter') {
+                url = 'https://openrouter.ai/api/v1/models'
+                headers = { Authorization: `Bearer ${apiKey.trim()}` }
+              }
+              
+              const resp = await fetch(url, { headers })
               if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
               const json = await resp.json()
-              const list = Array.isArray(json?.data) ? json.data : []
-              const q = modelName.trim().toLowerCase()
-              const ids = list
-                .map(m => ({
-                  id: m?.canonical_slug || m?.id || '',
-                  name: m?.name || '',
-                  pricing: m?.pricing || null
-                }))
-                .filter(x => x.id.toLowerCase().includes(q) || x.name.toLowerCase().includes(q))
-                .filter(x => {
-                  if (!openRouterFreeOnly) return true
-                  const hasFreeSuffix = x.id.toLowerCase().includes(':free')
-                  const p = x.pricing || {}
-                  const toNum = (v) => {
-                    const n = parseFloat(v)
-                    return Number.isFinite(n) ? n : NaN
-                  }
-                  const zeroPrompt = Number.isFinite(toNum(p.prompt)) && toNum(p.prompt) === 0
-                  const zeroCompletion = Number.isFinite(toNum(p.completion)) && toNum(p.completion) === 0
-                  const zeroRequest = Number.isFinite(toNum(p.request)) && toNum(p.request) === 0
-                  return hasFreeSuffix || zeroPrompt || zeroCompletion || zeroRequest
-                })
-                .map(x => x.id)
-              if (!cancelled) {
-                setOpenRouterModels(ids)
+              
+              let models = []
+              if (provider === 'zai' || provider === 'piramyd') {
+                models = Array.isArray(json?.data) ? json.data.map(m => m.id) : []
+              } else if (provider === 'openrouter') {
+                models = Array.isArray(json?.data) ? json.data.map(m => m.id) : []
               }
+              
+              setAvailableModels(models)
             } catch (e) {
-              if (!cancelled) setOpenRouterError('Falha ao pesquisar modelos do OpenRouter')
+              setModelsError('Falha ao carregar modelos')
+              setAvailableModels([])
             } finally {
-              if (!cancelled) setOpenRouterLoading(false)
+              setModelsLoading(false)
             }
-          }, 350)
-          return () => { 
-            cancelled = true
-            if (searchTimer.current) {
-              clearTimeout(searchTimer.current)
-              searchTimer.current = null
+          }, 300)
+          
+          return () => {
+            if (modelsSearchTimer.current) {
+              clearTimeout(modelsSearchTimer.current)
+              modelsSearchTimer.current = null
             }
           }
-        }, [provider, apiKey, modelName, openRouterFreeOnly])
-        
+        }, [provider, hasApiKey, apiKey])
+
         const persistApiKey = async () => {
           if (apiKey && apiKey.trim().length > 0) {
             await window.ccswitch.setCredential({ provider, apiKey })
@@ -218,12 +232,47 @@
         }
 
         const jsonPreview = useMemo(() => {
+          if (cliType === 'opencode' || cliType === 'opencode-go') {
+            const base = {
+              $schema: 'https://opencode.ai/config.json',
+              model: `${provider}/${modelName || 'modelo'}`
+            }
+            
+            // Para Piramyd, mostrar configuração completa com modelos
+            if (provider === 'piramyd' && availableModels && availableModels.length > 0) {
+              base.provider = {
+                piramyd: {
+                  npm: '@ai-sdk/openai-compatible',
+                  name: 'Piramyd Cloud',
+                  options: {
+                    baseURL: 'https://api.piramyd.cloud/v1',
+                    apiKey: apiKey ? "••••••••••••••••" : "",
+                    headers: {
+                      Authorization: apiKey ? "Bearer ••••••••••••••••" : ""
+                    }
+                  },
+                  models: {}
+                }
+              }
+              availableModels.forEach(modelId => {
+                base.provider.piramyd.models[modelId] = {
+                  name: modelId
+                }
+              })
+            }
+            
+            return JSON.stringify(base, null, 2)
+          }
+          
+          // Preview para Claude Code
           const getBaseUrl = () => {
             switch (provider) {
               case 'minimax': return "https://api.minimax.io/anthropic"
               case 'openrouter': return "https://openrouter.ai/api"
               case 'kimi': return "https://api.moonshot.ai/anthropic"
               case 'alibaba': return "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic"
+              case 'piramyd': return "https://api.piramyd.cloud/v1"
+              case 'cerebras': return "https://api.cerebras.ai/v1"
               default: return "https://api.z.ai/api/anthropic"
             }
           }
@@ -232,6 +281,8 @@
               case 'minimax': return 'MiniMax-M2.1'
               case 'kimi': return 'kimi-k2.5'
               case 'alibaba': return 'qwen3.5-plus'
+              case 'piramyd': return 'gpt-5.2-pro'
+              case 'cerebras': return 'glm-4.7'
               default: return 'glm-4.7'
             }
           }
@@ -251,18 +302,17 @@
           if (provider === 'openrouter') {
             base.env.ANTHROPIC_API_KEY = ""
           }
+          if (provider === 'piramyd') {
+            base.env.OPENAI_BASE_URL = "https://api.piramyd.cloud/v1"
+            base.env.OPENAI_API_KEY = apiKey ? "••••••••••••••••" : ""
+            delete base.env.ANTHROPIC_BASE_URL
+            delete base.env.ANTHROPIC_AUTH_TOKEN
+          }
           const models = ["ANTHROPIC_MODEL", "ANTHROPIC_SMALL_FAST_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL", "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"]
           models.forEach(m => base.env[m] = modelName || getDefaultModel())
-          
-          try {
-            if (additionalConfig) {
-              const extra = JSON.parse(additionalConfig)
-              Object.assign(base.env, extra)
-            }
-          } catch(e) {}
-          
+
           return JSON.stringify(base, null, 2)
-        }, [provider, modelName, apiKey, additionalConfig])
+        }, [cliType, provider, modelName, apiKey, availableModels])
 
         const onPickRoot = async () => {
           const p = await window.ccswitch.selectRoot()
@@ -275,17 +325,16 @@
           let targetRoot = rootPath
           if (!targetRoot) {
             const picked = await window.ccswitch.selectRoot()
-            if (!picked) { 
-              setSaving(false); 
-              setStatus({ ok: false, error: 'Selecione uma pasta válida para salvar.' }); 
-              return 
+            if (!picked) {
+              setSaving(false);
+              setStatus({ ok: false, error: 'Selecione uma pasta válida para salvar.' });
+              return
             }
             setRootPath(picked)
             targetRoot = picked
           }
-          const res = await window.ccswitch.saveSettings({ rootPath: targetRoot, provider, modelName, apiKey, additionalConfig })
+          const res = await window.ccswitch.saveSettings({ rootPath: targetRoot, cliType, provider, modelName, apiKey, availableModels })
           setSaving(false); setStatus(res)
-          // Se quiser que a mensagem dure mais ou menos, ajuste aqui
         }
 
         const openProjectFolder = () => {
@@ -297,11 +346,11 @@
 
         return React.createElement('div', { className: 'min-h-screen pb-12' }, [
           // Header
-          React.createElement('nav', { 
-            className: 'border-b border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md sticky top-0 z-50', 
-            style: { WebkitAppRegion: 'drag', paddingTop: isMac ? '32px' : '0px' } 
-          }, 
-            React.createElement('div', { className: 'max-w-5xl mx-auto px-6 h-16 flex items-center justify-between', style: { WebkitAppRegion: 'no-drag' } }, [
+          React.createElement('nav', {
+            className: 'border-b border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-950/50 backdrop-blur-md sticky top-0 z-50',
+            style: { WebkitAppRegion: 'drag', paddingTop: isMac ? '32px' : '0px' }
+          },
+            React.createElement('div', { className: 'max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between', style: { WebkitAppRegion: 'no-drag' } }, [
               React.createElement('div', { className: 'flex items-center gap-2' }, [
                 React.createElement('div', { className: 'w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold' }, 'C'),
                 React.createElement('span', { className: 'font-semibold text-lg tracking-tight' }, 'Claude Code Switcher')
@@ -317,7 +366,7 @@
             ])
           ),
 
-          React.createElement('main', { className: 'max-w-5xl mx-auto px-6 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-8' }, [
+          React.createElement('main', { className: 'max-w-7xl mx-auto px-4 sm:px-6 mt-6 lg:mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8' }, [
             // Left Column: Form
             React.createElement('div', { className: 'lg:col-span-7 space-y-6' }, [
               // Project Selection
@@ -345,96 +394,98 @@
               // Configuration
               React.createElement('div', { className: 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-6 shadow-sm space-y-6' }, [
                 React.createElement('h2', { className: 'text-sm font-semibold uppercase tracking-wider text-zinc-500 mb-2 flex items-center gap-2' }, [
-                  React.createElement(Icon, { name: 'settings-2', size: 14, theme }), 'Configurações do Modelo'
+                  React.createElement(Icon, { name: 'settings-2', size: 14, theme }), 'Configurações'
                 ]),
-                
-                // Provider
+
+                // 1. CLI Type Selection
                 React.createElement('div', null, [
-                  React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, 'PROVEDOR'),
-                  React.createElement('div', { className: 'grid grid-cols-3 gap-3' }, [
-                    { id: 'zai', label: 'Z.AI (GLM)', icon: 'Zap' },
-                    { id: 'minimax', label: 'MiniMax', icon: 'Cpu' },
-                    { id: 'kimi', label: 'Kimi', icon: 'Moon' },
-                    { id: 'openrouter', label: 'OpenRouter', icon: 'Globe' },
-                    { id: 'alibaba', label: 'Alibaba Coding Plan', icon: 'Cloud' }
-                  ].map(p => React.createElement('button', {
-                    key: p.id,
-                    onClick: () => { 
-                      setProvider(p.id); 
-                      if (PRESETS[p.id]?.[0]?.value) setModelName(PRESETS[p.id][0].value); 
-                      else setModelName('');
+                  React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, '1. TERMINAL'),
+                  React.createElement('div', { className: 'grid grid-cols-1 sm:grid-cols-2 gap-3' }, [
+                    { id: 'claude-code', label: 'Claude Code', icon: 'Terminal', description: 'Anthropic Claude Code' },
+                    { id: 'opencode', label: 'OpenCode', icon: 'Code', description: 'OpenCode CLI (Node.js)' },
+                    { id: 'opencode-go', label: 'OpenCode Go', icon: 'Box', description: 'OpenCode CLI (Go)' }
+                  ].map(cli => React.createElement('button', {
+                    key: cli.id,
+                    onClick: () => {
+                      setCliType(cli.id);
+                      setProvider('');
+                      setModelName('');
+                      setApiKey('');
+                      setHasApiKey(false);
                     },
-                    className: `flex items-center gap-2 px-4 py-3 rounded-xl border-2 transition-all ${provider === p.id 
-                      ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400' 
+                    className: `flex flex-col items-start gap-1 px-4 py-3 rounded-xl border-2 transition-all ${cliType === cli.id
+                      ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400'
                       : 'border-zinc-100 dark:border-zinc-800 hover:border-zinc-200 dark:hover:border-zinc-700'}`
-                  }, [React.createElement(Icon, { name: p.icon.toLowerCase(), size: 18, theme }), React.createElement('span', { className: 'font-medium' }, p.label)])))
+                  }, [
+                    React.createElement('div', { className: 'flex items-center gap-2' }, [
+                      React.createElement(Icon, { name: cli.icon.toLowerCase(), size: 18, theme }),
+                      React.createElement('span', { className: 'font-medium' }, cli.label)
+                    ]),
+                    React.createElement('span', { className: 'text-[10px] opacity-70' }, cli.description)
+                  ])))
                 ]),
 
-                // Model Name with Presets
+                // 2. Provider
                 React.createElement('div', null, [
-                  React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, 'MODELO'),
-                  provider === 'openrouter' 
-                    ? React.createElement('div', { className: 'space-y-3' }, [
-                        React.createElement('input', {
-                          value: modelName,
-                          onChange: e => setModelName(e.target.value),
-                          className: 'w-full px-4 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium',
-                          placeholder: 'Ex.: anthropic/claude-3.5-sonnet'
-                        }),
-                        React.createElement('label', { className: 'flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400' }, [
-                          React.createElement('input', {
-                            type: 'checkbox',
-                            checked: openRouterFreeOnly,
-                            onChange: e => setOpenRouterFreeOnly(e.target.checked)
-                          }),
-                          'Somente modelos free'
-                        ]),
-                        !apiKey 
-                          ? React.createElement('div', { className: 'text-xs text-zinc-500' }, 'Informe a API Key para pesquisar modelos.')
-                          : (modelName?.trim().length < 3)
-                            ? React.createElement('div', { className: 'text-xs text-zinc-500' }, 'Digite pelo menos 3 caracteres para pesquisar.')
-                            : openRouterLoading 
-                              ? React.createElement('div', { className: 'text-xs text-zinc-500' }, 'Pesquisando modelos...')
-                              : openRouterError 
-                                ? React.createElement('div', { className: 'text-xs text-red-500' }, openRouterError)
-                                : React.createElement('div', { className: 'flex flex-wrap gap-2 max-h-40 overflow-auto' }, 
-                                    (openRouterModels.length === 0 
-                                      ? [React.createElement('div', { key: 'nores', className: 'text-xs text-zinc-500' }, 'Nenhum modelo encontrado para a pesquisa.')] 
-                                      : openRouterModels.slice(0, 60).map(id => React.createElement('button', {
-                                          key: id,
-                                          onClick: () => setModelName(id),
-                                          className: `text-[10px] px-2 py-1 rounded-md border ${modelName === id 
-                                            ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 border-transparent' 
-                                            : 'border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all'}`
-                                        }, id))
-                                    )
-                                  )
-                      ])
-                    : React.createElement('div', { className: 'space-y-3' }, [
-                        React.createElement('input', {
-                          value: modelName,
-                          onChange: e => setModelName(e.target.value),
-                          className: 'w-full px-4 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium',
-                          placeholder: 'Nome do modelo...'
-                        }),
-                        React.createElement('div', { className: 'flex flex-wrap gap-2' }, PRESETS[provider].map(preset => React.createElement('button', {
-                          key: preset.value,
-                          onClick: () => setModelName(preset.value),
-                          className: `text-[10px] px-2 py-1 rounded-md border ${modelName === preset.value 
-                            ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 border-transparent' 
-                            : 'border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all'}`
-                        }, preset.name)))
-                      ])
+                  React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, '2. PROVEDOR'),
+                  React.createElement('div', { className: 'grid grid-cols-2 sm:grid-cols-3 gap-3' },
+                    (cliType === 'claude-code' ? [
+                      { id: 'zai', label: 'Z.AI (GLM)', icon: 'Zap' },
+                      { id: 'minimax', label: 'MiniMax', icon: 'Cpu' },
+                      { id: 'kimi', label: 'Kimi', icon: 'Moon' },
+                      { id: 'openrouter', label: 'OpenRouter', icon: 'Globe' },
+                      { id: 'alibaba', label: 'Alibaba Coding', icon: 'Cloud' },
+                      { id: 'piramyd', label: 'Piramyd Cloud', icon: 'Cloudy' },
+                      { id: 'cerebras', label: 'Cerebras', icon: 'Cpu' }
+                    ] : (cliType === 'opencode' || cliType === 'opencode-go') ? [
+                      { id: 'anthropic', label: 'Anthropic', icon: 'Bot' },
+                      { id: 'openai', label: 'OpenAI', icon: 'Sparkles' },
+                      { id: 'google', label: 'Google', icon: 'Square' },
+                      { id: 'opencode', label: 'OpenCode Zen', icon: 'Code' },
+                      { id: 'openrouter', label: 'OpenRouter', icon: 'Globe' },
+                      { id: 'minimax', label: 'MiniMax', icon: 'Cpu' },
+                      { id: 'zai', label: 'Z.AI', icon: 'Zap' },
+                      { id: 'kimi', label: 'Kimi', icon: 'Moon' },
+                      { id: 'alibaba', label: 'Alibaba', icon: 'Cloud' },
+                      { id: 'piramyd', label: 'Piramyd', icon: 'Cloudy' },
+                      { id: 'cerebras', label: 'Cerebras', icon: 'Cpu' }
+                    ] : []).map(p => React.createElement('button', {
+                      key: p.id,
+                      onClick: () => {
+                        setProvider(p.id);
+                        setModelName('');
+                        setModelFilter('');
+                        // Load saved API key for this provider
+                        (async () => {
+                          const res = await window.ccswitch.getCredential(p.id)
+                          if (res && res.ok && typeof res.apiKey === 'string' && res.apiKey.trim().length > 0) {
+                            setApiKey(res.apiKey)
+                            setHasApiKey(true)
+                          } else {
+                            setApiKey('')
+                            setHasApiKey(false)
+                          }
+                        })()
+                      },
+                      className: `flex items-center gap-2 px-4 py-3 rounded-xl border-2 transition-all ${provider === p.id
+                        ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                        : 'border-zinc-100 dark:border-zinc-800 hover:border-zinc-200 dark:hover:border-zinc-700'}`
+                    }, [React.createElement(Icon, { name: p.icon.toLowerCase(), size: 18, theme }), React.createElement('span', { className: 'font-medium' }, p.label)]))
+                  )
                 ]),
 
-                // API Key
-                React.createElement('div', null, [
-                  React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, 'API KEY'),
+                // 3. API Key
+                provider && React.createElement('div', null, [
+                  React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, '3. API KEY'),
                   React.createElement('div', { className: 'relative' }, [
                     React.createElement('input', {
                       type: 'text',
                       value: apiKey,
-                      onChange: e => setApiKey(e.target.value),
+                      onChange: e => {
+                        const val = e.target.value
+                        setApiKey(val)
+                        setHasApiKey(val.trim().length > 0)
+                      },
                       onBlur: persistApiKey,
                       className: 'w-full pl-4 pr-4 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-mono text-sm',
                       placeholder: 'sk-...'
@@ -442,34 +493,77 @@
                   ])
                 ]),
 
-                // Additional Config
-                React.createElement('div', null, [
-                  React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, 'JSON ADICIONAL (OPCIONAL)'),
-                  React.createElement('textarea', {
-                    value: additionalConfig,
-                    onChange: e => setAdditionalConfig(e.target.value),
-                    rows: 3,
-                    className: 'w-full px-4 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-mono text-xs',
-                    placeholder: '{"API_TIMEOUT_MS": "3000000"}'
-                  })
+                // 4. Model Name (only shown after API key)
+                hasApiKey && React.createElement('div', null, [
+                  React.createElement('label', { className: 'block text-xs font-medium text-zinc-500 mb-2' }, '4. MODELO'),
+                  React.createElement('div', { className: 'space-y-3' }, [
+                    // Model input
+                    React.createElement('input', {
+                      value: modelName,
+                      onChange: e => setModelName(e.target.value),
+                      className: 'w-full px-4 py-3 rounded-xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all font-medium',
+                      placeholder: provider === 'zai' || provider === 'openrouter' || provider === 'piramyd' ? 'Digite ou selecione um modelo...' : 'Nome do modelo...'
+                    }),
+                    // Filter input for providers with dynamic models
+                    (provider === 'zai' || provider === 'openrouter' || provider === 'piramyd')
+                      ? React.createElement('div', null, [
+                          React.createElement('input', {
+                            value: modelFilter,
+                            onChange: e => setModelFilter(e.target.value),
+                            className: 'w-full px-4 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm',
+                            placeholder: 'Filtrar modelos...'
+                          }),
+                          modelsLoading && React.createElement('div', { className: 'text-xs text-zinc-500 flex items-center gap-2' }, [
+                            React.createElement('span', { className: 'w-3 h-3 border-2 border-zinc-400 border-t-blue-500 rounded-full animate-spin' }),
+                            'Carregando modelos...'
+                          ]),
+                          modelsError && React.createElement('div', { className: 'text-xs text-red-500' }, modelsError)
+                        ])
+                      : null,
+                    // Model list for providers with API
+                    (provider === 'zai' || provider === 'openrouter' || provider === 'piramyd') && availableModels.length > 0
+                      ? React.createElement('div', { className: 'flex flex-wrap gap-2 max-h-48 overflow-auto' },
+                          availableModels
+                            .filter(m => !modelFilter || m.toLowerCase().includes(modelFilter.toLowerCase()))
+                            .slice(0, 100)
+                            .map(id => React.createElement('button', {
+                              key: id,
+                              onClick: () => setModelName(id),
+                              className: `text-[10px] px-2 py-1 rounded-md border ${modelName === id
+                                ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 border-transparent'
+                                : 'border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all'}`
+                            }, id))
+                        )
+                      : null,
+                    // Presets for providers without dynamic models
+                    !(provider === 'zai' || provider === 'openrouter' || provider === 'piramyd') && PRESETS[provider]
+                      ? React.createElement('div', { className: 'flex flex-wrap gap-2' }, PRESETS[provider].map(preset => React.createElement('button', {
+                          key: preset.value,
+                          onClick: () => setModelName(preset.value),
+                          className: `text-[10px] px-2 py-1 rounded-md border ${modelName === preset.value
+                            ? 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 border-transparent'
+                            : 'border-zinc-200 dark:border-zinc-800 text-zinc-500 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all'}`
+                        }, preset.name)))
+                      : null
+                  ])
                 ])
               ]),
 
               // Save Button
               React.createElement('button', {
-                disabled: !apiKey || saving,
+                disabled: !rootPath || !cliType || !hasApiKey || !provider || !modelName || saving,
                 onClick: onSave,
-                className: `w-full py-4 rounded-2xl font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${!rootPath || !apiKey || saving 
-                  ? 'bg-zinc-300 dark:bg-zinc-800 cursor-not-allowed opacity-50' 
+                className: `w-full py-3 sm:py-4 rounded-2xl font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${!rootPath || !cliType || !hasApiKey || !provider || !modelName || saving
+                  ? 'bg-zinc-300 dark:bg-zinc-800 cursor-not-allowed opacity-50'
                   : 'bg-blue-600 hover:bg-blue-700 hover:-translate-y-0.5 active:translate-y-0 shadow-blue-500/20'}`
               }, [
                 saving ? React.createElement(Icon, { name: 'loader-2', className: 'animate-spin', theme }) : React.createElement(Icon, { name: 'save', theme }),
-                saving ? 'Salvando Configurações...' : 'Gerar .claude/settings.json'
+                saving ? 'Salvando...' : `Gerar ${cliType === 'claude-code' ? '.claude/settings.json' : 'opencode.json'}`
               ]),
 
               // Status Feedback
               status && React.createElement('div', {
-                className: `p-4 rounded-xl border flex items-start justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300 ${status.ok 
+                className: `p-3 sm:p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300 ${status.ok 
                   ? 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/20 text-green-700 dark:text-green-400' 
                   : 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-700 dark:text-red-400'}`
               }, [
@@ -488,8 +582,8 @@
             ]),
 
             // Right Column: Preview
-            React.createElement('div', { className: 'lg:col-span-5' }, [
-              React.createElement('div', { className: 'sticky top-24' }, [
+            React.createElement('div', { className: 'lg:col-span-5 preview-column' }, [
+              React.createElement('div', { className: 'sticky top-24 lg:top-24' }, [
                 React.createElement('div', { className: 'bg-zinc-900 dark:bg-black rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl' }, [
                   // Preview Header
                   React.createElement('div', { className: 'bg-zinc-800/50 px-4 py-3 border-b border-zinc-800 flex items-center justify-between' }, [
@@ -499,30 +593,40 @@
                         React.createElement('div', { className: 'w-2.5 h-2.5 rounded-full bg-yellow-500' }),
                         React.createElement('div', { className: 'w-2.5 h-2.5 rounded-full bg-green-500' })
                       ]),
-                      React.createElement('span', { className: 'text-[11px] font-mono text-zinc-400 ml-2 uppercase tracking-widest' }, 'Preview: settings.json')
+                      React.createElement('span', { className: 'text-[11px] font-mono text-zinc-400 ml-2 uppercase tracking-widest' }, 
+                        cliType === 'claude-code' ? 'Preview: .claude/settings.json' : 'Preview: opencode.json'
+                      )
                     ]),
                     React.createElement(Icon, { name: 'code', size: 14, className: 'text-zinc-500', theme })
                   ]),
                   // Preview Body
-                  React.createElement('div', { className: 'p-6' }, [
-                    React.createElement('pre', { className: 'text-[12px] font-mono text-blue-400 leading-relaxed overflow-x-auto' }, 
+                  React.createElement('div', { className: 'p-4 sm:p-6' }, [
+                    React.createElement('pre', { className: 'text-[11px] sm:text-[12px] font-mono text-blue-400 leading-relaxed overflow-x-auto' },
                       jsonPreview.split('\n').map((line, i) => React.createElement('div', { key: i, className: 'flex gap-4' }, [
                         React.createElement('span', { className: 'text-zinc-700 text-right w-4 shrink-0' }, i + 1),
-                        React.createElement('span', { className: line.includes('ANTHROPIC_') ? 'text-blue-300' : line.includes('••••') ? 'text-zinc-600' : 'text-zinc-300' }, line)
+                        React.createElement('span', { className: line.includes('ANTHROPIC_') ? 'text-blue-300' : line.includes('••••') ? 'text-zinc-600' : line.includes('$schema') ? 'text-purple-300' : 'text-zinc-300' }, line)
                       ]))
                     )
                   ])
                 ]),
                 // Tips
-                React.createElement('div', { className: 'mt-6 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 space-y-3' }, [
+                React.createElement('div', { className: 'mt-4 sm:mt-6 p-3 sm:p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 space-y-2 sm:space-y-3' }, [
                   React.createElement('h3', { className: 'text-xs font-bold uppercase tracking-widest flex items-center gap-2' }, [
                     React.createElement(Icon, { name: 'lightbulb', size: 14, className: 'text-yellow-500', theme }), 'Dicas'
                   ]),
-                  React.createElement('ul', { className: 'text-[11px] space-y-2 leading-relaxed' }, [
-                    '• A pasta .claude será criada automaticamente se não existir.',
-                    '• O Claude Code lê as variáveis do campo "env" no arquivo settings.json.',
-                    '• Variáveis de ambiente reais (export ...) têm prioridade sobre este arquivo.'
-                  ])
+                  React.createElement('ul', { className: 'text-[10px] sm:text-[11px] space-y-1.5 sm:space-y-2 leading-relaxed' }, 
+                    cliType === 'claude-code' ? [
+                      '• A pasta .claude será criada automaticamente se não existir.',
+                      '• O Claude Code lê as variáveis do campo "env" no arquivo settings.json.',
+                      '• Variáveis de ambiente reais (export ...) têm prioridade sobre este arquivo.'
+                    ] : [
+                      '• O arquivo opencode.json será criado na raiz do projeto.',
+                      '• Use /connect no OpenCode para gerenciar credenciais.',
+                      '• O formato do modelo é provider_id/model_id.',
+                      '• Consulte models.dev para todos os provedores disponíveis.',
+                      '• OpenCode Go usa o mesmo formato de configuração do OpenCode (Node.js).'
+                    ]
+                  )
                 ])
               ])
             ])

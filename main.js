@@ -12,6 +12,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 700,
     titleBarStyle: 'hiddenInset', // Design moderno no macOS
+    show: false,
     webPreferences: {
       preload: path.join(app.getAppPath(), 'preload.cjs'),
       nodeIntegration: false,
@@ -19,6 +20,9 @@ function createWindow() {
       sandbox: true
     }
   })
+
+  mainWindow.maximize()
+  mainWindow.show()
 
   mainWindow.loadFile(path.join(app.getAppPath(), 'index.html'))
   
@@ -73,7 +77,7 @@ function isNonEmptyString(x) {
   return typeof x === 'string' && x.trim().length > 0
 }
 
-function providerEnv(provider, modelName, apiKey, additionalConfigObj) {
+function providerEnv(provider, modelName, apiKey) {
   const env = {}
   // Configurações comuns de base
   if (provider === 'zai') {
@@ -99,67 +103,115 @@ function providerEnv(provider, modelName, apiKey, additionalConfigObj) {
     env.ANTHROPIC_BASE_URL = 'https://coding-intl.dashscope.aliyuncs.com/apps/anthropic'
     env.ANTHROPIC_AUTH_TOKEN = apiKey
     env.API_TIMEOUT_MS = '3000000'
+  } else if (provider === 'piramyd') {
+    env.OPENAI_BASE_URL = 'https://api.piramyd.cloud/v1'
+    env.OPENAI_API_KEY = apiKey
+    env.API_TIMEOUT_MS = '3000000'
+  } else if (provider === 'cerebras') {
+    env.ANTHROPIC_BASE_URL = 'https://api.cerebras.ai/v1'
+    env.ANTHROPIC_AUTH_TOKEN = apiKey
+    env.API_TIMEOUT_MS = '3000000'
   }
 
   // Mapeamento de modelos para garantir compatibilidade total com Claude Code
   const models = [
-    "ANTHROPIC_MODEL", 
-    "ANTHROPIC_SMALL_FAST_MODEL", 
-    "ANTHROPIC_DEFAULT_SONNET_MODEL", 
-    "ANTHROPIC_DEFAULT_OPUS_MODEL", 
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_SMALL_FAST_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL"
   ]
   models.forEach(m => env[m] = modelName)
 
-  // Merge de configurações adicionais
-  if (additionalConfigObj && typeof additionalConfigObj === 'object') {
-    Object.assign(env, additionalConfigObj)
-  }
   return { env }
+}
+
+function openCodeConfig(provider, modelName, apiKey, availableModels) {
+  // Formato: provider_id/model_id
+  const modelId = `${provider}/${modelName}`
+  
+  const config = {
+    $schema: 'https://opencode.ai/config.json',
+    model: modelId
+  }
+  
+  // Para Piramyd, adicionar configuração completa com lista de modelos
+  if (provider === 'piramyd') {
+    config.provider = {
+      piramyd: {
+        npm: '@ai-sdk/openai-compatible',
+        name: 'Piramyd Cloud',
+        options: {
+          baseURL: 'https://api.piramyd.cloud/v1',
+          apiKey: apiKey,
+          headers: {
+            Authorization: `Bearer ${apiKey}`
+          }
+        },
+        models: {}
+      }
+    }
+    
+    // Adicionar lista de modelos suportados
+    if (availableModels && availableModels.length > 0) {
+      availableModels.forEach(modelId => {
+        config.provider.piramyd.models[modelId] = {
+          name: modelId
+        }
+      })
+    }
+  }
+  
+  return config
 }
 
 ipcMain.handle('save-settings', async (_evt, payload) => {
   try {
-    const { rootPath, provider, modelName, apiKey, additionalConfig } = payload || {}
-    
+    const { rootPath, cliType, provider, modelName, apiKey, availableModels } = payload || {}
+
     // Validações
     if (!isNonEmptyString(rootPath)) return { ok: false, error: 'Selecione uma pasta válida' }
-    if (!['minimax', 'zai', 'openrouter', 'kimi', 'alibaba'].includes(provider)) return { ok: false, error: 'Selecione um provedor válido' }
+    if (!['claude-code', 'opencode', 'opencode-go'].includes(cliType)) return { ok: false, error: 'Selecione um CLI válido' }
     if (!isNonEmptyString(modelName)) return { ok: false, error: 'Informe o nome do modelo' }
     if (!isNonEmptyString(apiKey)) return { ok: false, error: 'Informe a API Key' }
 
+    // Validação de provedor baseada no CLI
+    const validProviders = cliType === 'claude-code' 
+      ? ['minimax', 'zai', 'openrouter', 'kimi', 'alibaba', 'piramyd', 'cerebras']
+      : ['anthropic', 'openai', 'google', 'opencode', 'openrouter', 'minimax', 'zai', 'kimi', 'alibaba', 'piramyd', 'cerebras']
+    
+    if (!validProviders.includes(provider)) return { ok: false, error: 'Selecione um provedor válido' }
+
     // Verificar permissão de escrita
-    await fsp.access(rootPath, fs.constants.W_OK).catch(() => { 
-      throw new Error(`Sem permissão de escrita em: ${rootPath}`) 
+    await fsp.access(rootPath, fs.constants.W_OK).catch(() => {
+      throw new Error(`Sem permissão de escrita em: ${rootPath}`)
     })
 
-    // Parse do JSON adicional
-    let additionalObj = undefined
-    if (isNonEmptyString(additionalConfig)) {
-      try {
-        const parsed = JSON.parse(additionalConfig)
-        if (parsed && typeof parsed === 'object') additionalObj = parsed
-        else throw new Error('O JSON adicional deve ser um objeto {}')
-      } catch (e) {
-        return { ok: false, error: 'Configuração adicional inválida: verifique o formato JSON' }
+    if (cliType === 'opencode' || cliType === 'opencode-go') {
+      // Configuração para OpenCode (opencode.json na raiz)
+      const content = openCodeConfig(provider, modelName.trim(), apiKey.trim(), availableModels)
+      const configPath = path.join(rootPath, 'opencode.json')
+      
+      await fsp.writeFile(configPath, JSON.stringify(content, null, 2), 'utf-8')
+      
+      return {
+        ok: true,
+        message: `Configuração aplicada com sucesso em opencode.json!`
       }
-    }
+    } else {
+      // Configuração para Claude Code (.claude/settings.json)
+      const content = providerEnv(provider, modelName.trim(), apiKey.trim())
+      const claudeDir = path.join(rootPath, '.claude')
+      const settingsPath = path.join(claudeDir, 'settings.json')
 
-    const content = providerEnv(provider, modelName.trim(), apiKey.trim(), additionalObj)
-    const claudeDir = path.join(rootPath, '.claude')
-    const settingsPath = path.join(claudeDir, 'settings.json')
+      // Criar diretório e escrever arquivo
+      await fsp.mkdir(claudeDir, { recursive: true })
+      await fsp.writeFile(settingsPath, JSON.stringify(content, null, 2), 'utf-8')
 
-    // Criar diretório e escrever arquivo
-    await fsp.mkdir(claudeDir, { recursive: true })
-    await fsp.writeFile(settingsPath, JSON.stringify(content, null, 2), 'utf-8')
-
-    // Surpresa: Oferecer para abrir o arquivo após o sucesso
-    // (Poderia ser um botão na UI, mas aqui vamos apenas garantir o sucesso e logar)
-    // shell.showItemInFolder(settingsPath) // Comentado para não ser intrusivo, mas disponível
-    
-    return { 
-      ok: true, 
-      message: `Configuração aplicada com sucesso em .claude/settings.json!` 
+      return {
+        ok: true,
+        message: `Configuração aplicada com sucesso em .claude/settings.json!`
+      }
     }
   } catch (e) {
     return { ok: false, error: e?.message || 'Erro inesperado ao salvar as configurações' }
@@ -199,7 +251,8 @@ async function writeCredentials(obj) {
 ipcMain.handle('credential-set', async (_evt, payload) => {
   try {
     const { provider, apiKey } = payload || {}
-    if (!['minimax', 'zai', 'openrouter', 'kimi', 'alibaba'].includes(provider)) return { ok: false, error: 'provedor_invalido' }
+    const allProviders = ['minimax', 'zai', 'openrouter', 'kimi', 'alibaba', 'piramyd', 'cerebras', 'anthropic', 'openai', 'google', 'opencode', 'opencode-go']
+    if (!allProviders.includes(provider)) return { ok: false, error: 'provedor_invalido' }
     if (typeof apiKey !== 'string' || apiKey.trim().length === 0) return { ok: false, error: 'api_key_vazia' }
     const trimmed = apiKey.trim()
     const store = await readCredentials()
@@ -222,7 +275,8 @@ ipcMain.handle('credential-set', async (_evt, payload) => {
 
 ipcMain.handle('credential-get', async (_evt, provider) => {
   try {
-    if (!['minimax', 'zai', 'openrouter', 'kimi', 'alibaba'].includes(provider)) return { ok: false, error: 'provedor_invalido' }
+    const allProviders = ['minimax', 'zai', 'openrouter', 'kimi', 'alibaba', 'piramyd', 'cerebras', 'anthropic', 'openai', 'google', 'opencode', 'opencode-go']
+    if (!allProviders.includes(provider)) return { ok: false, error: 'provedor_invalido' }
     const store = await readCredentials()
     const entry = store.providers?.[provider]
     if (!entry || (typeof entry !== 'object')) return { ok: true, apiKey: '' }
